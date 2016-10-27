@@ -41,6 +41,7 @@ public class NBPart1 {
 
         // split train/test sets
         String names = shuffled.get(0).toString();
+
         List<String> name = Arrays.asList(names.split(","));
         Att = name.subList(1, name.size());
         shuffled.remove(0);
@@ -48,17 +49,43 @@ public class NBPart1 {
         training = shuffled.subList(0, java.lang.Math.round(shuffled.size() * PercentageSplit / 100));
         testing = shuffled.subList(java.lang.Math.round(shuffled.size() * PercentageSplit / 100), shuffled.size());
 
+
        //run algorithm
         NBPart1 nbPart1= new NBPart1();
-//        nbPart1.train(Att, training);
-        PLabels = nbPart1.training(Att,training); //e.g. {"yes"=0.46, "no"=0.53}
-        System.out.print(nbPart1.training(Att,training));
- //       System.out.print("\n"+testing);
+        PLabels = nbPart1.PLabels(nbPart1.labelsColumn(training)); //e.g. {"yes"=0.46, "no"=0.53}
+//        System.out.println(nbPart1.training(Att, training));
+//        nbPart1.predicted(nbPart1.nonrepLabels(training), Att, testing, training);
+//        nbPart1.calcProb(Att, testing.get(0).toString(), training);
+//        System.out.print("testing"+testing.get(0).toString());
 
 
         //test set
         List actual = nbPart1.labelsColumn(testing);
-        List predicted = nbPart1.predicted(Att, testing);
+        List predicted = nbPart1.predicted(nbPart1.nonrepLabels(testing),Att, testing,training);
+        System.out.print(predicted);
+
+        int[][] matrix = new int[nbPart1.nonrepLabels(testing).size()][nbPart1.nonrepLabels(testing).size()];
+        for (int m = 0; m < matrix.length; m++) {
+            for (int n = 0; n < matrix.length; n++) {
+                matrix[m][n]=0;
+            }
+        }
+
+
+        for(int i=0; i<testing.size();i++){
+            int x=0,y=0;
+            for(int j=0; j<nbPart1.nonrepLabels(testing).size();j++) {
+                if (actual.get(i) == nbPart1.nonrepLabels(testing).get(j)) {
+                    y = j;
+                }
+            }
+            for(int j=0; j<nbPart1.nonrepLabels(testing).size();j++) {
+                if (predicted.get(i) == nbPart1.nonrepLabels(testing).get(j)) {
+                    x = j;
+                }
+            }
+            matrix[x][y]+=1;
+        }
 
         //output
         PrintWriter pw = null;
@@ -70,28 +97,61 @@ public class NBPart1 {
         StringBuilder sb = new StringBuilder();
 
         sb.append(PLabels);
-        sb.append(',');
-        sb.append("Name");
-        sb.append('\n');
 
         pw.write(sb.toString());
         pw.close();
-        System.out.println("done!");
     }
 
 
 
-    public List predicted(List Att, List testing){
+    public List predicted(List labels, List Att, List testing, List training){
         List predicted = new ArrayList();
 
+        for (int i=0;i<testing.size();i++){
+            String label = labels.get(0).toString();
+            Double max = (Double)calcProb(Att, testing.get(i).toString(), training).get(0);
+            for (int j=1;j<labels.size();j++) {
+                if((Double)calcProb(Att, testing.get(i).toString(), training).get(j) > max){
+                    max = (Double)calcProb(Att, testing.get(i).toString(), training).get(j);
+                    label = labels.get(j).toString();
+                }
+            }
+        predicted.add(i,label);
+        }
 
-
+        System.out.println("predicted"+predicted);
         return predicted;
     }
 
+    //e.g. [0.0106,0.0274], Prob when label = YES / No
+        public ArrayList calcProb(List Att, String testing, List training){
+            ArrayList<Double> Sum = new ArrayList<>();
+        for (int i=0;i<nonrepLabels(training).size();i++){
+            ArrayList<Double> calcProbi = new ArrayList<>();
+            Double PLabel = PLabels(labelsColumn(training)).get(nonrepLabels(training).get(i));  //P(l)
+            for (int j=0;j<Att.size();j++){
+                HashMap<String, HashMap<String, Double>> temp = (HashMap)training(Att, training).get(nonrepLabels(training).get(i).toString());
+                HashMap<String, Double> temp2 = (HashMap)temp.get(Att.get(j).toString());
+                List<String> test = Arrays.asList(testing.split(","));
+                Double prob = temp2.get(test.get(j+1).toString());
+                calcProbi.add(prob);
+            }
+            Double sum = Math.log(PLabel);
+            for (int k=0; k<calcProbi.size();k++){
+                if (calcProbi.get(k)!=null) {
+                    sum += Math.log(calcProbi.get(k));
+                }
+            }
+            Sum.add(i,sum);
+        }
+        System.out.println("Sum "+Sum);
+        return Sum;
+    }
+
+
     //e.g. key = yes, values = <Outlook,<Sunny,0.2222>>
     public HashMap training(List Att, List training){
-        HashMap<String, HashMap> train = new HashMap<>();
+        HashMap<String, HashMap<String,HashMap<String,Double>>> train = new HashMap<>();
         List labels =nonrepLabels(training);
         for (int i=0; i<labels.size();i++){
             train.put(labels.get(i).toString(), AttProb(labels.get(i).toString(), Att, training));
@@ -101,10 +161,11 @@ public class NBPart1 {
 
     //key = att, value = prob (e.g. <Outlook,<Sunny,0.2222>> )
     public HashMap AttProb(String label, List Att, List training){
-        HashMap<String, HashMap> AttProb = new HashMap<>();
-        HashMap<String, Double> Prob = new HashMap<>();
+
+        HashMap<String,HashMap<String,Double>> AttProb = new HashMap<>();
         List subtraining = subtraining(label, training);
         for (int i=0; i<Att.size();i++){
+            HashMap<String, Double> Prob = new HashMap<>();
             List attColumn = attColumn(i+1, subtraining);
             for (int j=0; j<attColumn.size();j++) {
                 if (!Prob.containsKey(attColumn.get(j).toString())){
@@ -113,16 +174,14 @@ public class NBPart1 {
                     Prob.put(attColumn.get(j).toString(), Prob.get(attColumn.get(j).toString()) + 1);
                 }
             }
-            Prob.replaceAll((k, v) -> v/attColumn.size());
-
-//            System.out.print(Att.get(i).toString()+"\n");
+            Prob.replaceAll((k, v) -> (v+1)/(attColumn.size()+Prob.size()));
             AttProb.put(Att.get(i).toString(),Prob);
         }
         return AttProb;
     }
 
 
-
+    //get sub data set
     public List subtraining(String label, List training){
 //        System.out.print("\n"+"label"+label);
         List subtraining=new ArrayList();
@@ -157,6 +216,7 @@ public class NBPart1 {
         return labels;
     }
 
+        //unique labels
         public List nonrepLabels(List training){
         List nonrepLabels = new ArrayList();
         HashMap<String, Double> pLabels = PLabels(labelsColumn(training));
@@ -176,6 +236,7 @@ public class NBPart1 {
             }
         }
         pLabels.replaceAll((k, v) -> v/labels.size());
+//       System.out.println("pLabels"+pLabels);
         return pLabels;
     }
 
